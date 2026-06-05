@@ -1,0 +1,80 @@
+Yes — all of this is done on the Linux machine (the same one that runs your Python UI). Here's the step-by-step.
+1. Download the ASI SDK
+On the Linux machine, open a terminal:
+bashCopycd ~/Downloads
+wget https://download.zwoastro.com/software/sdk/ASI_linux_mac_SDK_V1.36.tar.bz2
+
+The filename/version may change. If wget fails, just go to https://www.zwoastro.com/downloads/developers in a browser, grab the "ASI Camera SDK for Linux & Mac", and put it in ~/Downloads/.
+
+2. Extract it
+bashCopycd ~/Downloads
+tar -xjvf ASI_linux_mac_SDK_*.tar.bz2
+cd ASI_linux_mac_SDK_*/
+ls
+You should see a folder structure like:
+Copyinclude/        <- ASICamera2.h (C header, you don't need it)
+lib/
+  armv6/
+  armv7/
+  armv8/
+  mac/
+  x64/          <- for normal Intel/AMD 64-bit PCs
+  x86/
+README.txt
+Check what architecture you have:
+bashCopyuname -m
+
+x86_64 → use the x64 folder
+aarch64 → use the armv8 folder (e.g. Raspberry Pi 4 64-bit)
+armv7l → use the armv7 folder
+
+3. Install the library
+Replace x64 below with your architecture folder if different:
+bashCopysudo cp lib/x64/libASICamera2.so* /usr/local/lib/
+sudo ldconfig
+Verify it's found:
+bashCopyldconfig -p | grep ASICamera2
+You should see something like:
+CopylibASICamera2.so.1.36 (libc6,x86-64) => /usr/local/lib/libASICamera2.so.1.36
+libASICamera2.so (libc6,x86-64) => /usr/local/lib/libASICamera2.so
+If libASICamera2.so (without version suffix) is missing, create the symlink:
+bashCopycd /usr/local/lib
+sudo ln -sf libASICamera2.so.* libASICamera2.so
+sudo ldconfig
+4. Install the udev rule (so you don't need sudo)
+The SDK ships a rule file, usually at lib/asi.rules:
+bashCopycd ~/Downloads/ASI_linux_mac_SDK_*/
+sudo cp lib/asi.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+This grants your normal user USB access to the camera. Unplug and replug the camera after this step.
+
+Some SDK versions also require your user to be in the plugdev group:
+bashCopysudo usermod -aG plugdev $USER
+Then log out and back in for that group to take effect.
+
+5. Install the Python bindings
+bashCopypip install zwoasi pyqt5 pyserial numpy
+If you use a virtual environment, activate it first.
+6. Verify everything works
+Plug the ASI6200 in via USB, then run this quick check:
+bashCopypython3 -c "
+import zwoasi as asi
+asi.init('/usr/local/lib/libASICamera2.so')
+print('Cameras found:', asi.list_cameras())
+"
+Expected output:
+CopyCameras found: ['ZWO ASI6200MM Pro']
+If you get:
+
+OSError: libASICamera2.so: cannot open shared object file → step 3 didn't take effect; re-check ldconfig -p | grep ASICamera2
+Cameras found: [] with the camera plugged in → udev rule not applied; redo step 4, replug the camera
+Permission denied → you're not in plugdev, or the udev rule didn't load; check ls -l /dev/bus/usb/...
+
+7. Run the UI
+bashCopypython3 main_ui.py
+Open the Camera tab → click Refresh → the ASI6200 should appear in the dropdown → click Connect.
+
+Quick troubleshooting cheatsheet
+SymptomFixFileNotFoundError: libASICamera2.so from my driversudo ldconfig didn't run, or wrong arch copiedCamera listed but Connect fails with permission errorudev rule not installed → step 4, replugUI hangs on connectPlug into a USB 3.0 port (blue), not USB 2.0 — the ASI6200 is bandwidth-hungryLive view very slowConfirm USB 3.0 cable + port, use RAW8, set bin to 2 or 4
+Once python3 -c "import zwoasi; ..." prints your camera name, the UI will work. Want me to walk through the STM32 side next (flashing firmware + which USB port on the Nucleo to plug into)?
